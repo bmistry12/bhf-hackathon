@@ -12,14 +12,16 @@ class Main():
     def __init__(self):
         self.allRows = []
         self.riskFactor = []
-        # Name of the csv to process
-        self.csvname = 'test-small.csv'
+        # Name of the csv to process - could change this to be user input
+        self.csvname = 'data/test.csv'
         process(self)
         batch(self)
-        # leave out for now
-        # updateCSV(self)
+        # leave out if you just want to manually debug
+        updateCSV(self)
 
 # Go through the CSV and identify latitude and longitute for each postcode
+
+
 def process(self):
     i = 0
     f = open(self.csvname)
@@ -29,12 +31,13 @@ def process(self):
     for row in csv_f:
         if (i > 0):
             postcode = sanitizePostcodes(str(row))
+            # print(postcode) # for debugging
             # Initialise risk array (with value of 0) for this postocde
             self.riskFactor.append((postcode, 0))
-            #Call the Postcodes.io api - this returns a json with all kinds of info about the postcode
-            response = requests.get("http://api.postcodes.io/postcodes/' + postcode)
+            # Call the Postcodes.io api - this returns a json with all kinds of info about the postcode
+            response = requests.get('http://api.postcodes.io/postcodes/' + postcode)
             parsed_json = json.loads(response.content)
-            print(parsed_json) # for debugging
+            # print(parsed_json)  # for debugging
             longitude = parsed_json.get('result').get('longitude')
             long_col.append(str(longitude))
             latitude = (parsed_json.get('result').get('latitude'))
@@ -60,16 +63,14 @@ def configureRows(self, long_col, lat_col):
     count = 0
     # for each row add its contents into an array and then add any additional data as required
     for row in csv_f:
-        #first row == headings
+        # first row == headings
         if(count == 0):
             row.append('Longitude')
             row.append('Latitude')
-            print(row)
-        # data rows 
+        # data rows
         else:
             row.append(long_col[count-1])
             row.append(lat_col[count-1])
-            print(row)
         self.allRows.append(row)
         count = count + 1
     f.close()
@@ -91,19 +92,26 @@ def batch(self):
     for i in range(len(self.allRows)):
         if i > 0:
             row = self.allRows[i]
-            print(i)
             for j in range(len(self.allRows)):
-                if j > i :
+                if j > i:
                     row2 = self.allRows[j]
-                    print(j)
-                    dist = calcDist(float(row[1]), float(row[2]), float(row2[1]), float(row2[2]))
-                    print(str(dist))
+                    dist = calcDist(float(row[1]), float(
+                        row[2]), float(row2[1]), float(row2[2]))
                     distances.append([row[0], row2[0], str(dist)])
-   # List of arrays with two postcodes and the distance between them 
-    print(distances)
-    # Start evaluating the risk of a postcode needing to be batched 
+   # List of arrays with two postcodes and the distance between them
+    # Start evaluating the risk of a postcode needing to be batched
     evaluateRisk(self, distances)
-
+    count = 0
+    for row in self.allRows:
+        if count == 0:
+            row.append("Risk")
+        else:
+            for risk in self.riskFactor:
+                if risk[0] == row[0]:
+                    row.append(risk[1])
+        count = count + 1
+    print("THE END!")
+    print(self.allRows)
 
 def calcDist(lat1, lon1, lat2, lon2):
     # Uses Haversine formula to determine the greatest circular distance between two points in miles
@@ -116,28 +124,31 @@ def calcDist(lat1, lon1, lat2, lon2):
     d = radius * c
     return d
 
-# Determine the probability of needing to batch each postcodes order 
+# Determine the probability of needing to batch each postcodes order
 def evaluateRisk(self, distances):
-    threshold = 0.5 #miles
+    threshold = 0.5  # miles
     for group in distances:
-        if (float(group[2]) <= threshold):
+        if (float(group[2]) == 0): # same postcode (will end up with a min of 100 risk)
+            increaseRisk(group[0], self, 50)
+            increaseRisk(group[1], self, 50)
+        elif (float(group[2]) <= threshold): # postcodes within 0.5 miles
             print(group[0])
             print(group[1])
-            increaseRisk(group[0], self)
-            increaseRisk(group[1], self)
+            increaseRisk(group[0], self, 1)
+            increaseRisk(group[1], self, 1)
             print("These are nearby - potentially batch them!")
     # The greater the risk the higher the chance of required batching
     print("Final risks")
-    print (self.riskFactor)
+    print(self.riskFactor)
 
-#Increment risk for the particular postcode
-# Currently re-orders postcodes which may be cause adding new data to be slighly more inefficient and complex but we shall see
-def increaseRisk(postcode, self):
-    toRemove = []
-    toReAdd = []
+# Increment risk for the particular postcode
+# Currently re-orders postcodes which probs isn't the best way but you gotta make sure you don't change data whilst we looping ennit
+def increaseRisk(postcode, self, increment):
+    toRemove= []
+    toReAdd= []
     for (code, risk) in self.riskFactor:
-        if code == postcode :
-            newRisk = risk + 1
+        if code == postcode:
+            newRisk= risk + increment
             toReAdd.append((code, newRisk))
             toRemove.append((code, risk))
     for item in toRemove:
